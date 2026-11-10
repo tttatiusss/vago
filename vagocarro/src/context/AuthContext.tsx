@@ -1,10 +1,11 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, AuthState } from '../types/auth';
+import { supabase } from '../services/supabase';
 
 interface AuthContextType extends AuthState {
   login: (email: string, password: string) => Promise<boolean>;
   register: (name: string, email: string, password: string) => Promise<boolean>;
-  logout: () => void;
+  logout: () => Promise<void>;
   error: string | null;
   clearError: () => void;
 }
@@ -16,34 +17,93 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isSupabaseConfigured = Boolean(process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+
+    // Check active session on startup
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setUser({
+          id: session.user.id,
+          name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Motorista',
+          email: session.user.email || '',
+          role: 'driver',
+          rating: 4.96,
+        });
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setUser({
+          id: session.user.id,
+          name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Motorista',
+          email: session.user.email || '',
+          role: 'driver',
+          rating: 4.96,
+        });
+      } else {
+        setUser(null);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [isSupabaseConfigured]);
+
   const clearError = () => setError(null);
 
   const login = async (email: string, password: string): Promise<boolean> => {
     setIsLoading(true);
     setError(null);
-    try {
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 800));
 
-      if (!email || !password) {
-        setError('Por favor, preencha todos os campos.');
-        setIsLoading(false);
-        return false;
+    if (!email || !password) {
+      setError('Por favor, preencha todos os campos.');
+      setIsLoading(false);
+      return false;
+    }
+
+    try {
+      if (isSupabaseConfigured) {
+        const { data, error: authError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        if (authError) {
+          setError(authError.message === 'Invalid login credentials' ? 'E-mail ou senha incorretos.' : authError.message);
+          setIsLoading(false);
+          return false;
+        }
+
+        if (data.user) {
+          setUser({
+            id: data.user.id,
+            name: data.user.user_metadata?.full_name || email.split('@')[0].toUpperCase(),
+            email: data.user.email || email,
+            role: 'driver',
+            rating: 4.96,
+          });
+        }
+      } else {
+        // Mock fallback if keys not filled in .env yet
+        await new Promise((r) => setTimeout(r, 600));
+        setUser({
+          id: 'driver_mock',
+          name: email.split('@')[0].toUpperCase(),
+          email,
+          role: 'driver',
+          rating: 4.96,
+        });
       }
 
-      const mockUser: User = {
-        id: 'driver_1',
-        name: email.split('@')[0].toUpperCase(),
-        email,
-        role: 'driver',
-        rating: 4.95,
-      };
-
-      setUser(mockUser);
       setIsLoading(false);
       return true;
-    } catch {
-      setError('Falha ao autenticar. Tente novamente.');
+    } catch (err: any) {
+      setError(err?.message || 'Erro ao conectar. Verifique sua conexão.');
       setIsLoading(false);
       return false;
     }
@@ -52,40 +112,71 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const register = async (name: string, email: string, password: string): Promise<boolean> => {
     setIsLoading(true);
     setError(null);
+
+    if (!name || !email || !password) {
+      setError('Por favor, preencha todos os campos.');
+      setIsLoading(false);
+      return false;
+    }
+
+    if (password.length < 6) {
+      setError('A senha deve ter pelo menos 6 caracteres.');
+      setIsLoading(false);
+      return false;
+    }
+
     try {
-      await new Promise((resolve) => setTimeout(resolve, 800));
+      if (isSupabaseConfigured) {
+        const { data, error: authError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              full_name: name,
+              role: 'driver',
+            },
+          },
+        });
 
-      if (!name || !email || !password) {
-        setError('Por favor, preencha todos os campos obrigatórios.');
-        setIsLoading(false);
-        return false;
+        if (authError) {
+          setError(authError.message);
+          setIsLoading(false);
+          return false;
+        }
+
+        if (data.user) {
+          setUser({
+            id: data.user.id,
+            name: name.trim(),
+            email: data.user.email || email,
+            role: 'driver',
+            rating: 5.0,
+          });
+        }
+      } else {
+        await new Promise((r) => setTimeout(r, 600));
+        setUser({
+          id: `driver_${Date.now()}`,
+          name: name.trim(),
+          email: email.trim(),
+          role: 'driver',
+          rating: 5.0,
+        });
       }
 
-      if (password.length < 6) {
-        setError('A senha deve ter no mínimo 6 caracteres.');
-        setIsLoading(false);
-        return false;
-      }
-
-      const newUser: User = {
-        id: `driver_${Date.now()}`,
-        name: name.trim(),
-        email: email.trim(),
-        role: 'driver',
-        rating: 5.0,
-      };
-
-      setUser(newUser);
       setIsLoading(false);
       return true;
-    } catch {
-      setError('Falha ao criar cadastro. Tente novamente.');
+    } catch (err: any) {
+      setError(err?.message || 'Erro ao criar conta.');
       setIsLoading(false);
       return false;
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    if (isSupabaseConfigured) {
+      await supabase.auth.signOut();
+    }
     setUser(null);
   };
 
