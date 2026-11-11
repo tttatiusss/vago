@@ -7,6 +7,7 @@ export interface UserLocationResult {
     longitude: number;
   };
   address: string;
+  state?: string;
   timestamp?: number;
 }
 
@@ -72,10 +73,23 @@ function formatNumberAndStreet(number: string, street: string): string {
 /**
  * Consulta a Google Geocoding API para obter o número e rua com precisão máxima do Uber.
  */
+interface ReverseGeocodedAddress {
+  address: string;
+  state?: string;
+}
+
+function formatAddressWithState(address: string, state?: string): string {
+  const cleanState = state?.trim();
+  if (!cleanState || address.endsWith(`, ${cleanState}`)) {
+    return address;
+  }
+  return `${address}, ${cleanState}`;
+}
+
 async function reverseGeocodeWithGoogle(coords: {
   latitude: number;
   longitude: number;
-}): Promise<string | null> {
+}): Promise<ReverseGeocodedAddress | null> {
   const apiKey =
     process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
     process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY;
@@ -99,6 +113,7 @@ async function reverseGeocodeWithGoogle(coords: {
 
       let streetNumber = '';
       let route = '';
+      let state: string | undefined;
 
       if (Array.isArray(best.address_components)) {
         for (const comp of best.address_components) {
@@ -108,18 +123,24 @@ async function reverseGeocodeWithGoogle(coords: {
           if (comp.types.includes('route')) {
             route = comp.long_name;
           }
+          if (comp.types.includes('administrative_area_level_1')) {
+            state = comp.long_name;
+          }
         }
       }
 
       if (route) {
-        return formatUberStyleAddress(route, streetNumber);
+        return {
+          address: formatUberStyleAddress(route, streetNumber),
+          state,
+        };
       }
 
       // Se não encontrou componentes separados, pega o primeiro segmento do endereço formatado
       if (best.formatted_address) {
         const firstPart = best.formatted_address.split(',')[0].trim();
         if (firstPart) {
-          return firstPart;
+          return { address: firstPart, state };
         }
       }
     }
@@ -190,7 +211,7 @@ export async function saveCachedUserLocation(
 }
 
 /**
- * Busca a posição fresca no GPS e formata rua e número como no app do Uber.
+ * Busca a posição fresca no GPS e inclui rua, número e estado no endereço.
  */
 export async function fetchFreshLocation(
   previousLocation?: UserLocationResult | null
@@ -218,11 +239,7 @@ export async function fetchFreshLocation(
     };
 
     // Se já temos cache e o usuário moveu menos de 50 metros, mantemos o endereço
-    if (
-      previousLocation &&
-      previousLocation.address &&
-      previousLocation.address !== 'Sua localização atual'
-    ) {
+    if (previousLocation && previousLocation.state && previousLocation.address) {
       const distance = calculateDistanceMeters(
         previousLocation.coords.latitude,
         previousLocation.coords.longitude,
@@ -234,6 +251,7 @@ export async function fetchFreshLocation(
         const updated: UserLocationResult = {
           coords,
           address: previousLocation.address,
+          state: previousLocation.state,
           timestamp: Date.now(),
         };
         await saveCachedUserLocation(updated);
@@ -242,32 +260,42 @@ export async function fetchFreshLocation(
     }
 
     // 1. Tenta obter rua e número via Google Geocoding API
-    let formattedAddress = await reverseGeocodeWithGoogle(coords);
+    let addressInfo = await reverseGeocodeWithGoogle(coords);
 
     // 2. Fallback para expo-location reverse geocoding
-    if (!formattedAddress || formattedAddress === 'Sua localização atual') {
+    if (!addressInfo || addressInfo.address === 'Sua localização atual') {
       try {
         const reverse = await Location.reverseGeocodeAsync(coords);
         if (reverse && reverse.length > 0) {
           const item = reverse[0];
-          formattedAddress = formatUberStyleAddress(
-            item.street,
-            item.streetNumber,
-            item.name
-          );
+          addressInfo = {
+            address: formatUberStyleAddress(item.street, item.streetNumber, item.name),
+            state: item.region || undefined,
+          };
         }
       } catch (geocodeErr) {
         console.warn('[LocationService] Expo reverseGeocode falhou:', geocodeErr);
       }
     }
 
+    const formattedAddress = addressInfo
+      ? formatAddressWithState(addressInfo.address, addressInfo.state)
+      : null;
+
     if (!formattedAddress) {
-      formattedAddress = previousLocation?.address || 'Sua localização atual';
+      const freshResult: UserLocationResult = {
+        coords,
+        address: previousLocation?.address || 'Sua localização atual',
+        timestamp: Date.now(),
+      };
+      await saveCachedUserLocation(freshResult);
+      return freshResult;
     }
 
     const freshResult: UserLocationResult = {
       coords,
       address: formattedAddress,
+      state: addressInfo?.state,
       timestamp: Date.now(),
     };
 
