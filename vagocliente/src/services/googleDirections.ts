@@ -8,6 +8,9 @@ export interface RouteResult {
   distanceText: string;
   durationText: string;
   durationMinutes: number;
+  durationSeconds: number;
+  distanceKm: number;
+  distanceMeters: number;
 }
 
 /**
@@ -52,8 +55,30 @@ export function decodePolyline(encoded: string): Coords[] {
 }
 
 /**
- * Gera uma rota simulada suave com curvas entre a origem e o destino
- * caso a API do Google não esteja disponível ou em modo offline.
+ * Calcula a distância em linha reta (em metros) entre dois pontos.
+ */
+function calculateDistanceMeters(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371e3;
+  const φ1 = (lat1 * Math.PI) / 180;
+  const φ2 = (lat2 * Math.PI) / 180;
+  const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+  const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c;
+}
+
+/**
+ * Gera uma rota simulada com curvas caso a API do Google não esteja acessível.
  */
 function generateFallbackCurveRoute(origin: Coords, dest: Coords): Coords[] {
   const points: Coords[] = [];
@@ -62,10 +87,8 @@ function generateFallbackCurveRoute(origin: Coords, dest: Coords): Coords[] {
   const latDiff = dest.latitude - origin.latitude;
   const lngDiff = dest.longitude - origin.longitude;
 
-  // Cria um desvio para simular traçado de ruas reais (como na imagem)
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
-    // Curva quadrática com desvio perpendicular
     const curveOffset = Math.sin(t * Math.PI) * 0.015;
 
     points.push({
@@ -78,7 +101,7 @@ function generateFallbackCurveRoute(origin: Coords, dest: Coords): Coords[] {
 }
 
 /**
- * Consulta a Google Directions API para traçar a rota real entre origem e destino.
+ * Consulta a Google Directions API com informações precisas de distância e tráfego.
  */
 export async function fetchGoogleRoute(
   origin: Coords,
@@ -90,7 +113,8 @@ export async function fetchGoogleRoute(
 
   if (apiKey) {
     try {
-      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude},${destination.longitude}&key=${apiKey}&mode=driving`;
+      // language=pt para garantir retornos em português ("12 min", "8,4 km")
+      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude},${destination.longitude}&key=${apiKey}&mode=driving&language=pt&departure_time=now`;
       const response = await fetch(url);
       const data = await response.json();
 
@@ -99,17 +123,26 @@ export async function fetchGoogleRoute(
         const leg = route.legs?.[0];
 
         const coordinates = decodePolyline(route.overview_polyline.points);
-        const distanceText = leg?.distance?.text || '14 km';
-        const durationText = leg?.duration?.text || '9 min';
-        const durationMinutes = leg?.duration?.value
-          ? Math.round(leg.duration.value / 60)
-          : 9;
+
+        // Considera duração com tráfego se a Google API fornecer
+        const durationSeconds =
+          leg?.duration_in_traffic?.value || leg?.duration?.value || 540;
+        const durationMinutes = Math.max(1, Math.round(durationSeconds / 60));
+
+        const distanceMeters = leg?.distance?.value || 8500;
+        const distanceKm = Math.round((distanceMeters / 1000) * 10) / 10;
+
+        const distanceText = leg?.distance?.text || `${distanceKm.toString().replace('.', ',')} km`;
+        const durationText = leg?.duration_in_traffic?.text || leg?.duration?.text || `${durationMinutes} min`;
 
         return {
           coordinates,
           distanceText,
           durationText,
           durationMinutes,
+          durationSeconds,
+          distanceKm,
+          distanceMeters,
         };
       }
 
@@ -121,12 +154,30 @@ export async function fetchGoogleRoute(
     }
   }
 
-  // Fallback inteligente caso a rota falhe ou chave não responda
+  // Fallback baseado no cálculo real de distância entre coordenadas
   const coordinates = generateFallbackCurveRoute(origin, destination);
+  const directMeters = calculateDistanceMeters(
+    origin.latitude,
+    origin.longitude,
+    destination.latitude,
+    destination.longitude
+  );
+
+  // Fator de rota urbana (~1.3x da linha reta)
+  const estimatedMeters = Math.max(1000, Math.round(directMeters * 1.3));
+  const distanceKm = Math.round((estimatedMeters / 1000) * 10) / 10;
+
+  // Velocidade média urbana de 30 km/h = 2 min/km
+  const durationMinutes = Math.max(2, Math.round(distanceKm * 2.2));
+  const durationSeconds = durationMinutes * 60;
+
   return {
     coordinates,
-    distanceText: '14 km',
-    durationText: '9 min',
-    durationMinutes: 9,
+    distanceText: `${distanceKm.toString().replace('.', ',')} km`,
+    durationText: `${durationMinutes} min`,
+    durationMinutes,
+    durationSeconds,
+    distanceKm,
+    distanceMeters: estimatedMeters,
   };
 }

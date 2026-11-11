@@ -170,7 +170,7 @@ export const PlanRideModal: React.FC<PlanRideModalProps> = ({
           >
             <Ionicons name="arrow-back" size={24} color="#000000" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Plan your ride</Text>
+          <Text style={styles.headerTitle}>Planeje sua viagem</Text>
           <View style={{ width: 24 }} />
         </View>
 
@@ -185,7 +185,7 @@ export const PlanRideModal: React.FC<PlanRideModalProps> = ({
           >
             <Ionicons name="time-outline" size={16} color="#000000" />
             <Text style={styles.pillText}>
-              {pickupTimeOption === 'now' ? 'Pickup now' : 'Schedule later'}
+              {pickupTimeOption === 'now' ? 'Partir agora' : 'Agendar viagem'}
             </Text>
             <Ionicons name="chevron-down" size={14} color="#000000" />
           </TouchableOpacity>
@@ -199,7 +199,7 @@ export const PlanRideModal: React.FC<PlanRideModalProps> = ({
           >
             <Ionicons name="person-outline" size={16} color="#000000" />
             <Text style={styles.pillText}>
-              {passengerOption === 'for_me' ? 'For me' : 'For a friend'}
+              {passengerOption === 'for_me' ? 'Para mim' : 'Para um amigo'}
             </Text>
             <Ionicons name="chevron-down" size={14} color="#000000" />
           </TouchableOpacity>
@@ -252,7 +252,7 @@ export const PlanRideModal: React.FC<PlanRideModalProps> = ({
                   style={styles.destinationTextInput}
                   value={destinationText}
                   onChangeText={setDestinationText}
-                  placeholder="Where to?"
+                  placeholder="Para onde?"
                   placeholderTextColor="#71717A"
                   autoCorrect={false}
                   returnKeyType="search"
@@ -287,7 +287,7 @@ export const PlanRideModal: React.FC<PlanRideModalProps> = ({
           {isSearching && (
             <View style={styles.searchingRow}>
               <ActivityIndicator size="small" color="#000000" />
-              <Text style={styles.searchingText}>Consultando Google APIs...</Text>
+              <Text style={styles.searchingText}>Buscando destinos...</Text>
             </View>
           )}
 
@@ -339,7 +339,7 @@ export const PlanRideModal: React.FC<PlanRideModalProps> = ({
                 <View style={styles.actionIconCircle}>
                   <Ionicons name="globe-outline" size={22} color="#000000" />
                 </View>
-                <Text style={styles.staticActionText}>Search in a different city</Text>
+                <Text style={styles.staticActionText}>Buscar em outra cidade</Text>
               </TouchableOpacity>
 
               {/* Option 2: Set location on map */}
@@ -351,7 +351,7 @@ export const PlanRideModal: React.FC<PlanRideModalProps> = ({
                 <View style={styles.actionIconCircle}>
                   <Ionicons name="location-outline" size={22} color="#000000" />
                 </View>
-                <Text style={styles.staticActionText}>Set location on map</Text>
+                <Text style={styles.staticActionText}>Definir local no mapa</Text>
               </TouchableOpacity>
             </View>
           )}

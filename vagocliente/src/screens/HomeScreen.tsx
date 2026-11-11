@@ -8,7 +8,6 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TopModeSelector } from '../components/home/TopModeSelector';
 import { SearchBar } from '../components/home/SearchBar';
-import { SuggestionsSection } from '../components/home/SuggestionsSection';
 import { PromoBanner } from '../components/home/PromoBanner';
 import { DeliverSection } from '../components/home/DeliverSection';
 import { PlanRideModal } from './PlanRideModal';
@@ -61,19 +60,6 @@ export const HomeScreen: React.FC = () => {
     setIsPlanRideModalVisible(true);
   };
 
-  const handleSelectSuggestion = (type: string) => {
-    if (type === 'ride') {
-      setIsPlanRideModalVisible(true);
-      return;
-    }
-    const titles: Record<string, string> = {
-      send_items: 'Envio de Itens',
-      reserve: 'Reserva Antecipada',
-      store_pickup: 'Retirada em Loja',
-    };
-    Alert.alert(titles[type] || 'Serviço', `Você selecionou: ${titles[type] || type}`);
-  };
-
   const handleDestinationConfirmed = async (
     destination: PlacePrediction,
     originAddress: string,
@@ -102,7 +88,7 @@ export const HomeScreen: React.FC = () => {
       send_car: 'Envio por Carro',
       tracking: 'Rastreamento em Tempo Real',
     };
-    Alert.alert('Courier', `Opção selecionada: ${names[id] || id}`);
+    Alert.alert('Correios', `Opção selecionada: ${names[id] || id}`);
   };
 
   // Se o usuário selecionou o destino, exibe a tela de escolha da corrida (PlanRideScreen)
@@ -130,7 +116,7 @@ export const HomeScreen: React.FC = () => {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Top Switcher: 🚗 Vago  |  📦 Courier */}
+      {/* Top Switcher: 🚗 Vago  |  📦 Correio */}
       <TopModeSelector
         currentMode={currentMode}
         onSelectMode={(mode) => setCurrentMode(mode)}
@@ -147,21 +133,13 @@ export const HomeScreen: React.FC = () => {
           onPressLater={handleLaterPress}
         />
 
-        {/* NOTA: Os 2 locais recentes (Ikeja e Egbeda) foram omitidos conforme instrução */}
-
-        {/* Suggestions Section: Viagem, Envios, Reserva, Retirada */}
-        <SuggestionsSection
-          onSelectSuggestion={handleSelectSuggestion}
-          onPressSeeAll={() => Alert.alert('Sugestões', 'Visualizando todos os serviços')}
-        />
-
         {/* Promo Banner: Entregas no mesmo dia */}
         <PromoBanner
-          onPressCourier={() => Alert.alert('Courier', 'Solicitar entrega no mesmo dia')}
+          onPressCourier={() => Alert.alert('Correios', 'Solicitar entrega no mesmo dia')}
           onPressReservePromo={() => Alert.alert('Reserva', 'Agendar uma viagem com desconto')}
         />
 
-        {/* Deliver with Courier Section */}
+        {/* Deliver with Correios Section */}
         <DeliverSection onPressOption={handleDeliverOption} />
       </ScrollView>
 

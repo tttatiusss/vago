@@ -34,7 +34,7 @@ export const BottomTabBar: React.FC<BottomTabBarProps> = ({
             currentTab === 'home' ? styles.tabLabelActive : styles.tabLabelInactive,
           ]}
         >
-          Home
+          Início
         </Text>
       </TouchableOpacity>
 
@@ -55,7 +55,7 @@ export const BottomTabBar: React.FC<BottomTabBarProps> = ({
             currentTab === 'services' ? styles.tabLabelActive : styles.tabLabelInactive,
           ]}
         >
-          Services
+          Serviços
         </Text>
       </TouchableOpacity>
 
@@ -76,7 +76,7 @@ export const BottomTabBar: React.FC<BottomTabBarProps> = ({
             currentTab === 'activity' ? styles.tabLabelActive : styles.tabLabelInactive,
           ]}
         >
-          Activity
+          Atividade
         </Text>
       </TouchableOpacity>
 
@@ -101,7 +101,7 @@ export const BottomTabBar: React.FC<BottomTabBarProps> = ({
             currentTab === 'account' ? styles.tabLabelActive : styles.tabLabelInactive,
           ]}
         >
-          Account
+          Conta
         </Text>
       </TouchableOpacity>
     </View>

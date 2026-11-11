@@ -56,7 +56,7 @@ export const TopModeSelector: React.FC<TopModeSelectorProps> = ({
               currentMode === 'courier' ? styles.tabTextActive : styles.tabTextInactive,
             ]}
           >
-            Courier
+            Correios
           </Text>
         </View>
         {currentMode === 'courier' && <View style={styles.activeIndicator} />}

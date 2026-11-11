@@ -9,7 +9,7 @@ interface DeliverSectionProps {
 export const DeliverSection: React.FC<DeliverSectionProps> = ({ onPressOption }) => {
   return (
     <View style={styles.container}>
-      <Text style={styles.sectionTitle}>Entregue com Courier</Text>
+      <Text style={styles.sectionTitle}>Entregue com Correios</Text>
 
       <ScrollView
         horizontal

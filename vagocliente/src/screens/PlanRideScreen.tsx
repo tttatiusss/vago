@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,14 +8,17 @@ import {
   Platform,
   Alert,
   Dimensions,
-  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { fetchGoogleRoute, RouteResult, Coords } from '../services/googleDirections';
 import { PlacePrediction } from '../services/googlePlaces';
+import {
+  calculateRidePrices,
+  CalculatedRideOption,
+} from '../services/pricingService';
 
-// Tenta importar react-native-maps de forma segura para não travar na Web ou Expo Go
+// Tenta importar react-native-maps com segurança para evitar travamento em Web/Expo Go
 let MapView: any = null;
 let Marker: any = null;
 let Polyline: any = null;
@@ -27,64 +30,9 @@ if (Platform.OS !== 'web') {
     Marker = Maps.Marker;
     Polyline = Maps.Polyline;
   } catch (e) {
-    // Modo fallback caso módulos nativos ainda não estejam vinculados
+    // Fallback gracioso
   }
 }
-
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-
-export interface RideOption {
-  id: string;
-  name: string;
-  capacity?: number;
-  timeArrival: string;
-  durationMinutes: number;
-  price: string;
-  originalPrice?: string;
-  hasPromo?: boolean;
-  fasterBadge?: boolean;
-  iconType: 'priority' | 'car' | 'courier' | 'wait_save';
-}
-
-const MOCK_RIDES: RideOption[] = [
-  {
-    id: 'priority',
-    name: 'Priority',
-    capacity: 4,
-    timeArrival: '6:46 PM',
-    durationMinutes: 9,
-    price: 'NGN 10,800.00',
-    fasterBadge: true,
-    iconType: 'priority',
-  },
-  {
-    id: 'vagox',
-    name: 'VagoX',
-    capacity: 4,
-    timeArrival: '6:47 PM',
-    durationMinutes: 11,
-    price: 'NGN 9,400.00',
-    iconType: 'car',
-  },
-  {
-    id: 'courier',
-    name: 'Courier',
-    timeArrival: '6:43 PM',
-    durationMinutes: 6,
-    price: 'NGN 2,800.00',
-    originalPrice: 'NGN 4,000.00',
-    hasPromo: true,
-    iconType: 'courier',
-  },
-  {
-    id: 'wait_save',
-    name: 'Wait & Save',
-    timeArrival: '6:55 PM',
-    durationMinutes: 18,
-    price: 'NGN 8,800.00',
-    iconType: 'wait_save',
-  },
-];
 
 interface PlanRideScreenProps {
   originAddress: string;
@@ -92,7 +40,7 @@ interface PlanRideScreenProps {
   destination: PlacePrediction;
   destinationCoords: Coords;
   onBack: () => void;
-  onConfirmRide: (ride: RideOption) => void;
+  onConfirmRide: (ride: CalculatedRideOption) => void;
 }
 
 export default function PlanRideScreen({
@@ -112,27 +60,23 @@ export default function PlanRideScreen({
 
   const isNativeMapReady = Platform.OS !== 'web' && MapView && Marker && Polyline;
 
-  // Carros simulados na área da rota (estilo Uber)
+  // Carros na área da rota simulados
   const nearbyCars: Coords[] = [
     {
-      latitude: originCoords.latitude + 0.008,
-      longitude: originCoords.longitude - 0.004,
+      latitude: originCoords.latitude + 0.006,
+      longitude: originCoords.longitude - 0.003,
     },
     {
-      latitude: originCoords.latitude + 0.016,
-      longitude: originCoords.longitude + 0.009,
+      latitude: originCoords.latitude + 0.012,
+      longitude: originCoords.longitude + 0.007,
     },
     {
-      latitude: originCoords.latitude + 0.024,
-      longitude: originCoords.longitude + 0.018,
-    },
-    {
-      latitude: originCoords.latitude - 0.006,
-      longitude: originCoords.longitude + 0.005,
+      latitude: originCoords.latitude + 0.018,
+      longitude: originCoords.longitude + 0.014,
     },
   ];
 
-  // Buscar a rota do Google Directions ao montar a tela
+  // Busca a rota e o tempo real da Google Directions API com tráfego
   useEffect(() => {
     let isMounted = true;
     (async () => {
@@ -140,14 +84,13 @@ export default function PlanRideScreen({
       if (isMounted) {
         setRouteData(result);
 
-        // Ajusta a câmera do mapa para enquadrar a rota inteira
         if (mapRef.current && result.coordinates.length > 0) {
           setTimeout(() => {
             mapRef.current?.fitToCoordinates(result.coordinates, {
               edgePadding: { top: 80, right: 60, bottom: 340, left: 60 },
               animated: true,
             });
-          }, 400);
+          }, 350);
         }
       }
     })();
@@ -157,11 +100,26 @@ export default function PlanRideScreen({
     };
   }, [originCoords, destinationCoords]);
 
+  // Calcula os preços dinâmicos em Euro baseados na distância e tempo do Google
+  const rideOptions: CalculatedRideOption[] = useMemo(() => {
+    const dummyRoute: RouteResult = routeData || {
+      coordinates: [],
+      distanceText: '8,5 km',
+      durationText: '12 min',
+      durationMinutes: 12,
+      durationSeconds: 720,
+      distanceKm: 8.5,
+      distanceMeters: 8500,
+    };
+
+    return calculateRidePrices(dummyRoute);
+  }, [routeData]);
+
   const selectedRide =
-    MOCK_RIDES.find((r) => r.id === selectedRideId) || MOCK_RIDES[0];
+    rideOptions.find((r) => r.id === selectedRideId) || rideOptions[0];
 
   const handleSelectPayment = () => {
-    Alert.alert('Forma de Pagamento', 'Selecione a forma de pagamento desejada:', [
+    Alert.alert('Forma de Pagamento', 'Escolha como prefere pagar:', [
       { text: 'Dinheiro (Cash)', onPress: () => setPaymentMethod('cash') },
       { text: 'Cartão de Crédito', onPress: () => setPaymentMethod('card') },
       { text: 'Vago Pay', onPress: () => setPaymentMethod('vago_pay') },
@@ -173,8 +131,7 @@ export default function PlanRideScreen({
     onConfirmRide(selectedRide);
   };
 
-  // Renderizador do ícone de cada veículo
-  const renderVehicleIcon = (type: RideOption['iconType']) => {
+  const renderVehicleIcon = (type: CalculatedRideOption['iconType']) => {
     switch (type) {
       case 'priority':
         return (
@@ -211,7 +168,7 @@ export default function PlanRideScreen({
 
   return (
     <View style={styles.container}>
-      {/* 1. SEÇÃO DO MAPA COM A ROTA DO GOOGLE */}
+      {/* 1. MAPA COM ROTA DO GOOGLE */}
       <View style={styles.mapContainer}>
         {isNativeMapReady ? (
           <MapView
@@ -220,11 +177,11 @@ export default function PlanRideScreen({
             initialRegion={{
               latitude: (originCoords.latitude + destinationCoords.latitude) / 2,
               longitude: (originCoords.longitude + destinationCoords.longitude) / 2,
-              latitudeDelta: Math.abs(originCoords.latitude - destinationCoords.latitude) * 1.6 || 0.08,
-              longitudeDelta: Math.abs(originCoords.longitude - destinationCoords.longitude) * 1.6 || 0.08,
+              latitudeDelta: Math.abs(originCoords.latitude - destinationCoords.latitude) * 1.5 || 0.08,
+              longitudeDelta: Math.abs(originCoords.longitude - destinationCoords.longitude) * 1.5 || 0.08,
             }}
           >
-            {/* Linha da rota via Google Directions API */}
+            {/* Linha da rota traçada pelo Google Directions */}
             {routeData?.coordinates && routeData.coordinates.length > 0 && (
               <Polyline
                 coordinates={routeData.coordinates}
@@ -235,7 +192,7 @@ export default function PlanRideScreen({
               />
             )}
 
-            {/* Marcador de Origem com Callout e Badge "9 MIN" */}
+            {/* Marcador de Origem com minutos calculados pelo Google */}
             <Marker coordinate={originCoords} anchor={{ x: 0.5, y: 0.5 }}>
               <View style={styles.markerAnchor}>
                 <View style={styles.calloutCard}>
@@ -244,7 +201,7 @@ export default function PlanRideScreen({
                       {originAddress}
                     </Text>
                     <Text style={styles.calloutSubtitle} numberOfLines={1}>
-                      Local de embarque
+                      Ponto de partida
                     </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={16} color="#000000" />
@@ -261,7 +218,7 @@ export default function PlanRideScreen({
               </View>
             </Marker>
 
-            {/* Marcador de Destino com Callout e Quadrado Preto */}
+            {/* Marcador de Destino */}
             <Marker coordinate={destinationCoords} anchor={{ x: 0.5, y: 0.5 }}>
               <View style={styles.markerAnchor}>
                 <View style={styles.calloutCard}>
@@ -279,7 +236,7 @@ export default function PlanRideScreen({
               </View>
             </Marker>
 
-            {/* Carros Vago ao redor da rota */}
+            {/* Veículos Vago nas proximidades */}
             {nearbyCars.map((carCoord, idx) => (
               <Marker key={`car_${idx}`} coordinate={carCoord} anchor={{ x: 0.5, y: 0.5 }}>
                 <View style={styles.mapCarMarker}>
@@ -289,18 +246,15 @@ export default function PlanRideScreen({
             ))}
           </MapView>
         ) : (
-          /* Fallback visual estilizado quando Maps nativo não estiver compilado */
           <View style={styles.fallbackMap}>
-            {/* Ruas simuladas */}
             <View style={styles.gridLineH1} />
             <View style={styles.gridLineH2} />
             <View style={styles.gridLineV1} />
             <View style={styles.gridLineV2} />
 
-            {/* Linha de Rota Desenhada */}
             <View style={styles.fallbackRouteLine} />
 
-            {/* Callout de Destino */}
+            {/* Marcador de Destino */}
             <View style={styles.fallbackDestMarker}>
               <View style={styles.calloutCard}>
                 <View style={styles.calloutTextContainer}>
@@ -316,7 +270,7 @@ export default function PlanRideScreen({
               <View style={styles.destinationSquare} />
             </View>
 
-            {/* Callout de Origem */}
+            {/* Marcador de Origem */}
             <View style={styles.fallbackOriginMarker}>
               <View style={styles.originMarkerBadge}>
                 <View style={styles.timePill}>
@@ -339,18 +293,10 @@ export default function PlanRideScreen({
                 <Ionicons name="chevron-forward" size={14} color="#000000" />
               </View>
             </View>
-
-            {/* Carros no mapa */}
-            <View style={[styles.mapCarMarker, { position: 'absolute', top: '22%', left: '38%' }]}>
-              <MaterialCommunityIcons name="car-side" size={20} color="#000000" />
-            </View>
-            <View style={[styles.mapCarMarker, { position: 'absolute', top: '35%', left: '22%' }]}>
-              <MaterialCommunityIcons name="car-side" size={20} color="#000000" />
-            </View>
           </View>
         )}
 
-        {/* Botão Voltar Flutuante */}
+        {/* Botão Voltar */}
         <TouchableOpacity
           style={[styles.floatingBackButton, { top: insets.top + 10 }]}
           onPress={onBack}
@@ -358,23 +304,30 @@ export default function PlanRideScreen({
         >
           <Ionicons name="arrow-back" size={22} color="#000000" />
         </TouchableOpacity>
+
+        {/* Badge Flutuante de Distância e Tempo Calculados pelo Google */}
+        {routeData && (
+          <View style={[styles.routeStatsBadge, { top: insets.top + 14 }]}>
+            <Ionicons name="navigate" size={13} color="#2563EB" />
+            <Text style={styles.routeStatsText}>
+              {routeData.distanceText} • {routeData.durationText}
+            </Text>
+          </View>
+        )}
       </View>
 
-      {/* 2. FOLHA INFERIOR (BOTTOM SHEET): "Choose a ride" */}
+      {/* 2. FOLHA INFERIOR (ESCOLHA UMA VIAGEM) */}
       <View style={styles.sheetContainer}>
-        {/* Puxador da folha */}
         <View style={styles.sheetHandle} />
 
-        {/* Título */}
-        <Text style={styles.sheetTitle}>Choose a ride</Text>
+        <Text style={styles.sheetTitle}>Escolha uma viagem</Text>
 
-        {/* Lista de Opções de Corrida */}
         <ScrollView
           style={styles.ridesScrollView}
           contentContainerStyle={styles.ridesScrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {MOCK_RIDES.map((ride) => {
+          {rideOptions.map((ride) => {
             const isSelected = ride.id === selectedRideId;
 
             return (
@@ -387,12 +340,12 @@ export default function PlanRideScreen({
                 onPress={() => setSelectedRideId(ride.id)}
                 activeOpacity={0.8}
               >
-                {/* Ícone do Veículo */}
+                {/* Ícone */}
                 <View style={styles.vehicleColumn}>
                   {renderVehicleIcon(ride.iconType)}
                 </View>
 
-                {/* Detalhes (Nome, Capacidade, Tempo) */}
+                {/* Dados da corrida */}
                 <View style={styles.rideInfoColumn}>
                   <View style={styles.rideNameRow}>
                     {ride.iconType === 'priority' && (
@@ -408,19 +361,18 @@ export default function PlanRideScreen({
                   </View>
 
                   <Text style={styles.rideTimeText}>
-                    {ride.timeArrival} • {ride.durationMinutes} min
+                    Chegada às {ride.timeArrival} • {ride.durationMinutes} min
                   </Text>
 
-                  {/* Badge "Faster" */}
                   {ride.fasterBadge && (
                     <View style={styles.fasterBadge}>
                       <Ionicons name="flash" size={10} color="#FFFFFF" style={{ marginRight: 2 }} />
-                      <Text style={styles.fasterBadgeText}>Faster</Text>
+                      <Text style={styles.fasterBadgeText}>Mais rápido</Text>
                     </View>
                   )}
                 </View>
 
-                {/* Preço */}
+                {/* Preço em Euro */}
                 <View style={styles.priceColumn}>
                   <View style={styles.priceRow}>
                     {ride.hasPromo && (
@@ -441,9 +393,8 @@ export default function PlanRideScreen({
         </ScrollView>
       </View>
 
-      {/* 3. BARRA INFERIOR FIXA (BOTAO DINHEIRO & ESCOLHA PRIORIDADE) */}
+      {/* 3. BARRA INFERIOR FIXA (DINHEIRO & BOTAO DE CONFIRMACAO) */}
       <View style={[styles.bottomStickyBar, { paddingBottom: Math.max(insets.bottom, 14) }]}>
-        {/* Linha 1: Seleção de Pagamento (Cash) */}
         <TouchableOpacity
           style={styles.paymentRow}
           onPress={handleSelectPayment}
@@ -455,7 +406,7 @@ export default function PlanRideScreen({
             </View>
             <Text style={styles.paymentText}>
               {paymentMethod === 'cash'
-                ? 'Cash'
+                ? 'Dinheiro'
                 : paymentMethod === 'card'
                 ? 'Cartão de Crédito'
                 : 'Vago Pay'}
@@ -464,7 +415,6 @@ export default function PlanRideScreen({
           <Ionicons name="chevron-forward" size={16} color="#71717A" />
         </TouchableOpacity>
 
-        {/* Linha 2: Botão Principal de Confirmação + Botão de Scanner/QR */}
         <View style={styles.actionButtonsRow}>
           <TouchableOpacity
             style={styles.confirmButton}
@@ -472,13 +422,13 @@ export default function PlanRideScreen({
             activeOpacity={0.85}
           >
             <Text style={styles.confirmButtonText}>
-              Choose {selectedRide.name}
+              Confirmar {selectedRide.name}
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.scanButton}
-            onPress={() => Alert.alert('Código QR / Scanner', 'Abrir leitor de código')}
+            onPress={() => Alert.alert('Leitor de Código', 'Abrindo leitor de QR Code...')}
             activeOpacity={0.7}
           >
             <MaterialCommunityIcons name="qrcode-scan" size={22} color="#000000" />
@@ -515,6 +465,28 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
     elevation: 5,
     zIndex: 10,
+  },
+  routeStatsBadge: {
+    position: 'absolute',
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 4,
+    zIndex: 10,
+  },
+  routeStatsText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#111111',
   },
   markerAnchor: {
     alignItems: 'center',
@@ -600,8 +572,6 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 3,
   },
-
-  // Estilos de mapa simulado caso MapView nativo não esteja disponível
   fallbackMap: {
     flex: 1,
     backgroundColor: '#E8ECF2',
@@ -660,8 +630,6 @@ const styles = StyleSheet.create({
     left: '14%',
     alignItems: 'flex-start',
   },
-
-  // 2. Folha Inferior (Bottom Sheet)
   sheetContainer: {
     flex: 1,
     backgroundColor: '#FFFFFF',
@@ -808,8 +776,6 @@ const styles = StyleSheet.create({
     textDecorationLine: 'line-through',
     marginTop: 2,
   },
-
-  // 3. Barra Fixa Inferior
   bottomStickyBar: {
     backgroundColor: '#FFFFFF',
     borderTopWidth: StyleSheet.hairlineWidth,

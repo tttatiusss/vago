@@ -41,7 +41,7 @@ export const PromoBanner: React.FC<PromoBannerProps> = ({
               onPress={onPressCourier}
               activeOpacity={0.8}
             >
-              <Text style={styles.whiteButtonText}>Pedir Courier</Text>
+              <Text style={styles.whiteButtonText}>Pedir Correios</Text>
             </TouchableOpacity>
           </View>
 
